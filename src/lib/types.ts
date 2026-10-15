@@ -15,10 +15,12 @@ export interface AppConfig {
   filtroActivo: number;
   /** Lista de filtros configurados */
   filtros: FilterConfig[];
-  /** true = el siguiente escaneo será ENTRADA; false = SALIDA */
-  proximaEsEntrada: boolean;
-  /** Alternar automáticamente dirección tras cada escaneo */
-  autoAlternar: boolean;
+  /**
+   * Dirección del PRIMER escaneo de cada persona (cada QR nuevo).
+   * Por defecto 'salida': la persona sale de la nave (p. ej. al baño)
+   * y a partir de ahí su dirección se alterna sola en cada escaneo.
+   */
+  primeraDireccion: Direction;
 }
 
 export interface ScanRecord {

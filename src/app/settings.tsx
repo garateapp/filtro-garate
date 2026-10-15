@@ -91,40 +91,29 @@ export default function SettingsScreen() {
             hay conexión, queda guardado y se sincroniza automáticamente.
           </Text>
 
-          {/* Dirección por defecto */}
-          <Text style={styles.section}>Dirección del escaneo</Text>
+          {/* Dirección inicial por persona */}
+          <Text style={styles.section}>Primer escaneo de cada persona</Text>
           <View style={styles.segmentRow}>
             <SegmentButton
-              label="Entrada"
-              active={config.proximaEsEntrada}
-              color="#10b981"
-              onPress={() => void update({ proximaEsEntrada: true })}
+              label="Salida"
+              active={config.primeraDireccion === 'salida'}
+              color="#f59e0b"
+              onPress={() => void update({ primeraDireccion: 'salida' })}
             />
             <SegmentButton
-              label="Salida"
-              active={!config.proximaEsEntrada}
-              color="#f59e0b"
-              onPress={() => void update({ proximaEsEntrada: false })}
+              label="Entrada"
+              active={config.primeraDireccion === 'entrada'}
+              color="#10b981"
+              onPress={() => void update({ primeraDireccion: 'entrada' })}
             />
           </View>
           <Text style={styles.hint}>
-            Por defecto el primer escaneo es ENTRADA. Pulsa aquí para forzar la dirección del
-            próximo escaneo.
+            Por defecto, el primer escaneo de un QR nuevo es SALIDA (la persona sale de la nave,
+            p. ej. al baño). A partir de ahí la app alterna automáticamente la dirección de{' '}
+            <Text style={styles.hintStrong}>cada persona</Text> según su último movimiento: si Ana
+            sale y vuelve a escanear, será ENTRADA para ella, aunque otros hayan escaneado en medio
+            a distintas horas. Esta opción solo afecta a QRs que se escaneen por primera vez.
           </Text>
-
-          <Pressable
-            style={styles.switchRow}
-            onPress={() => void update({ autoAlternar: !config.autoAlternar })}
-            accessibilityRole="switch"
-            accessibilityState={{ checked: config.autoAlternar }}>
-            <View style={styles.flex}>
-              <Text style={styles.switchLabel}>Alternar automáticamente</Text>
-              <Text style={styles.hint}>
-                Entrada → Salida → Entrada… después de cada escaneo.
-              </Text>
-            </View>
-            <SimpleSwitch toggled={config.autoAlternar} />
-          </Pressable>
 
           {/* Filtros */}
           <Text style={styles.section}>Filtros (Escanea en el filtro activo)</Text>
@@ -241,14 +230,7 @@ function FilterRow({
   );
 }
 
-/** Switch simple dibujado con Views. */
-function SimpleSwitch({ toggled }: { toggled: boolean }) {
-  return (
-    <View style={[styles.switchTrack, toggled && styles.switchTrackOn]}>
-      <View style={[styles.switchThumb, toggled && styles.switchThumbOn]} />
-    </View>
-  );
-}
+
 
 const styles = StyleSheet.create({
   flex: { flex: 1 },
@@ -275,6 +257,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   hint: { color: '#8a8f98', fontSize: 12, lineHeight: 17 },
+  hintStrong: { color: '#dfe9f5', fontWeight: '700' },
   saved: { minHeight: 16, color: '#10b981', fontWeight: '700' },
   segmentRow: { flexDirection: 'row', gap: 10 },
   segment: {
@@ -285,29 +268,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   segmentText: { fontWeight: '800', fontSize: 15 },
-  switchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    paddingVertical: 12,
-  },
-  switchLabel: { color: '#fff', fontSize: 15, fontWeight: '600' },
-  switchTrack: {
-    width: 52,
-    height: 30,
-    borderRadius: 15,
-    backgroundColor: '#3a3d42',
-    justifyContent: 'center',
-    paddingHorizontal: 3,
-  },
-  switchTrackOn: { backgroundColor: '#208AEF' },
-  switchThumb: {
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    backgroundColor: '#fff',
-  },
-  switchThumbOn: { alignSelf: 'flex-end' as const },
   filterRow: {
     flexDirection: 'row',
     alignItems: 'center',

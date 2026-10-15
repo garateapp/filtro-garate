@@ -26,15 +26,15 @@ Migraciones y modelos Eloquent:
 
 **`scans`** — cada escaneo recibido de la app móvil:
 - `id`
-- `qr_data` (string, requerido) — contenido del QR escaneado
-- `direction` (enum: `entrada`, `salida`; default `entrada`) — el primer escaneo de la app es ENTRADA por defecto
+- `qr_data` (string, requerido) — contenido del QR escaneado; **identifica a la persona**
+- `direction` (enum: `entrada`, `salida`; default `salida`) — el PRIMER escaneo de cada persona (cada `qr_data` nuevo) es SALIDA por defecto: sale de la nave (p. ej. al baño). Los siguientes escaneos de esa misma persona llegan ya alternados por la app (SALIDA→ENTRADA→SALIDA…), calculado por persona, no globalmente.
 - `filter_id` (foreign key a `filters`, onDelete restrict)
 - `filter_name` (string) — nombre del filtro en el momento del escaneo (snapshot, no se re-escribe al renombrar)
 - `scanned_at` (timestamp) — fecha/hora local del escaneo enviada por la app
 - `source_ip` (string nullable), `device_id` (string nullable)
 - `created_at`, `updated_at`
 
-Índices: `(filter_id, scanned_at)`, `(qr_data)`, `(direction, scanned_at)`.
+Índices: `(filter_id, scanned_at)`, `(qr_data, scanned_at)` (consultas de estado por persona), `(direction, scanned_at)`.
 
 **`api_tokens` (opcional, auth por dispositivo):** tabla simple `device_tokens`: `id`, `token` (único, hash), `device_name`, `last_used_at`, `timestamps`. Alternativa: Sanctum tokens. Ver sección 4.
 
@@ -74,6 +74,7 @@ La app Expo envía por cada escaneo un **POST** con `Content-Type: application/j
 - `GET /api/filtros` → lista de filtros activos `{ id, name }[]` (la app puede usarlos para validar/sincronizar su config local).
 - `GET /api/escaneos?desde=&hasta=&filtro=&tipo=&page=` → historial paginado (Laravel `paginate(50)`).
 - `GET /api/resumen?filtro=&dia=` → conteos `{ entradas: int, salidas: int, pendientes_conteo_no_aplica }` para widgets del dashboard.
+- `GET /api/estado` → estado actual POR PERSONA: para cada `qr_data`, su último registro → `{ qr: "...", dentro: bool, ultimo_movimiento: "entrada"|"salida", ultimo_en: "ISO", total_escaneos: int }`. Como mucha gente sale y vuelve a horas distintas (baño, pausas), el panel debe poder ver quién está dentro y quién fuera en tiempo real, no un contador global único.
 
 Implementar en `routes/api.php` con un `ScanController` (invokable methods), FormRequest `StoreScanRequest` para validación, y Resource `ScanResource` que devuelva SIEMPRE las claves `qr`, `tipo`, `filtro`, `filtroNombre`, `fecha` (camelCase, igual que el payload de entrada).
 

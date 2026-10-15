@@ -4,10 +4,20 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
 
-import { getPendingScans, insertScan, markError, markSynced } from '@/db/scans';
+import {
+  getLastDirectionForQr,
+  getPendingScans,
+  getPersonStates,
+  insertScan,
+  markError,
+  markSynced,
+} from '@/db/scans';
 import { sendScan } from '@/lib/api';
 import type { AppConfig, Direction } from '@/lib/types';
-import { loadConfig, subscribeConfig, updateConfig } from '@/store/config';
+import { loadConfig, subscribeConfig } from '@/store/config';
+
+/** Invierte una dirección (entrada ↔ salida). */
+const opposite = (d: Direction): Direction => (d === 'entrada' ? 'salida' : 'entrada');
 
 export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -16,7 +26,13 @@ export default function ScanScreen() {
     qr: string;
     direction: Direction;
     online: boolean;
+    nuevo: boolean; // primer escaneo de esa persona
   } | null>(null);
+  /** Contadores en vivo derivados del estado por persona (SQLite local). */
+  const [stats, setStats] = useState<{ dentro: number; fuera: number }>({
+    dentro: 0,
+    fuera: 0,
+  });
   const [sending, setSending] = useState(false);
   const lockRef = useRef(false);
   const configRef = useRef<AppConfig | null>(null);
@@ -26,7 +42,7 @@ export default function ScanScreen() {
     configRef.current = config;
   }, [config]);
 
-  // Cargar configuración guardada (filtro activo, dirección por defecto…)
+  // Cargar configuración guardada (filtro activo, dirección inicial por persona…)
   useEffect(() => {
     let cancelled = false;
     loadConfig().then((c) => {
@@ -40,6 +56,16 @@ export default function ScanScreen() {
   // Refrescar cuando Ajustes guarda un cambio…
   useEffect(() => subscribeConfig(setConfig), []);
 
+  const refreshStats = useCallback(async () => {
+    try {
+      const people = await getPersonStates();
+      const fuera = people.filter((p) => p.lastDirection === 'salida').length;
+      setStats({ dentro: people.length - fuera, fuera });
+    } catch {
+      // base de datos aún no disponible
+    }
+  }, []);
+
   // …y recargar también al volver a esta pestaña (garantiza lo último de AsyncStorage)
   useFocusEffect(
     useCallback(() => {
@@ -47,10 +73,11 @@ export default function ScanScreen() {
       loadConfig().then((c) => {
         if (!cancelled) setConfig(c);
       });
+      void refreshStats();
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [refreshStats])
   );
 
   // Reintentar envíos pendientes cuando se abre la app / cambia el endpoint
@@ -92,7 +119,13 @@ export default function ScanScreen() {
     lockRef.current = true;
     setTimeout(() => (lockRef.current = false), 2500);
 
-    const direction: Direction = cfg.proximaEsEntrada ? 'entrada' : 'salida';
+    // La dirección se calcula POR PERSONA (cada QR):
+    // - primer escaneo de ese QR → la dirección inicial configurada (por defecto SALIDA)
+    // - escaneos siguientes     → lo contrario de su último movimiento
+    // Así, si Ana sale al baño y Luis sale más tarde, cada uno tiene su propio
+    // par salida→entrada sin afectarse entre sí.
+    const last = await getLastDirectionForQr(data);
+    const direction: Direction = last ? opposite(last) : cfg.primeraDireccion;
     const filter = cfg.filtros.find((f) => f.id === cfg.filtroActivo) ?? cfg.filtros[0];
     const scannedAt = new Date().toISOString();
 
@@ -124,14 +157,10 @@ export default function ScanScreen() {
       setSending(false);
     }
 
-    // 3. Actualizar dirección para el próximo escaneo (solo si alterna automáticamente)
-    if (cfg.autoAlternar) {
-      const next: AppConfig = { ...cfg, proximaEsEntrada: !cfg.proximaEsEntrada };
-      setConfig(next);
-      void updateConfig(next);
-    }
+    // Ya no hay "próxima dirección" global: cada persona alterna según su historial.
 
-    setFeedback({ qr: data, direction, online });
+    setFeedback({ qr: data, direction, online, nuevo: last === null });
+    void refreshStats();
     void Haptics.notificationAsync(
       direction === 'entrada'
         ? Haptics.NotificationFeedbackType.Success
@@ -161,7 +190,6 @@ export default function ScanScreen() {
     );
   }
 
-  const proximaDireccion: Direction = config?.proximaEsEntrada ? 'entrada' : 'salida';
   const filtroNombre =
     config?.filtros.find((f) => f.id === config?.filtroActivo)?.nombre ?? '—';
 
@@ -179,8 +207,17 @@ export default function ScanScreen() {
       {/* Cabecera */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Filtro Garate</Text>
-        <Text style={styles.headerSub}>
-          {filtroNombre} · Próximo: {proximaDireccion.toUpperCase()}
+        <Text style={styles.headerSub}>{filtroNombre}</Text>
+        <View style={styles.chipsRow}>
+          <View style={[styles.chip, styles.chipIn]}>
+            <Text style={styles.chipText}>Dentro: {stats.dentro}</Text>
+          </View>
+          <View style={[styles.chip, styles.chipOut]}>
+            <Text style={styles.chipText}>Fuera: {stats.fuera}</Text>
+          </View>
+        </View>
+        <Text style={styles.headerHint}>
+          Cada QR alterna solo: su próximo escaneo será lo contrario de su último movimiento
         </Text>
       </View>
 
@@ -210,6 +247,15 @@ export default function ScanScreen() {
           </Text>
           <Text style={styles.feedbackQr} numberOfLines={2}>
             {feedback.qr}
+          </Text>
+          <Text style={styles.feedbackNext}>
+            {feedback.nuevo
+              ? `Primer escaneo · su próximo movimiento será ${
+                  feedback.direction === 'entrada' ? 'SALIDA' : 'ENTRADA'
+                }`
+              : `Su próximo escaneo será ${
+                  feedback.direction === 'entrada' ? 'SALIDA' : 'ENTRADA'
+                }`}
           </Text>
           <Text style={styles.feedbackSync}>
             {feedback.online
@@ -259,6 +305,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
+  chipsRow: { flexDirection: 'row', gap: 8, marginTop: 8 },
+  chip: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+  },
+  chipIn: { backgroundColor: 'rgba(16, 185, 129, 0.9)' },
+  chipOut: { backgroundColor: 'rgba(245, 158, 11, 0.9)' },
+  chipText: { color: '#fff', fontWeight: '800', fontSize: 13 },
+  headerHint: {
+    color: 'rgba(255,255,255,0.75)',
+    fontSize: 11,
+    marginTop: 6,
+    textAlign: 'center',
+  },
   frame: {
     position: 'absolute',
     top: '28%',
@@ -291,5 +352,6 @@ const styles = StyleSheet.create({
   feedbackOut: { backgroundColor: 'rgba(245, 158, 11, 0.95)' },
   feedbackDirection: { color: '#fff', fontSize: 22, fontWeight: '900' },
   feedbackQr: { color: '#fff', fontSize: 14, opacity: 0.95 },
+  feedbackNext: { color: '#fff', fontSize: 13, fontWeight: '700' },
   feedbackSync: { color: '#fff', fontSize: 12, opacity: 0.85 },
 });

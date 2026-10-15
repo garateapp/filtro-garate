@@ -112,6 +112,54 @@ export async function clearScans(): Promise<void> {
   await db.runAsync('DELETE FROM scans');
 }
 
+/** Última dirección registrada para un QR concreto (o null si es su primer escaneo). */
+export async function getLastDirectionForQr(qrData: string): Promise<Direction | null> {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ direction: Direction }>(
+    'SELECT direction FROM scans WHERE qrData = ? ORDER BY id DESC LIMIT 1',
+    qrData
+  );
+  return row?.direction ?? null;
+}
+
+/**
+ * Estado de cada persona (agrupado por QR) según sus escaneos locales.
+ * `inside === true` significa que su último movimiento fue ENTRADA → está dentro;
+ * si su último movimiento fue SALIDA, está fuera (p. ej. en el baño).
+ */
+export interface PersonState {
+  qrData: string;
+  lastDirection: Direction;
+  lastScannedAt: string;
+  total: number;
+  inside: boolean;
+}
+
+export async function getPersonStates(): Promise<PersonState[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{
+    qrData: string;
+    direction: Direction;
+    scannedAt: string;
+    total: number;
+  }>(
+    `SELECT s.qrData, s.direction, s.scannedAt, c.total
+     FROM scans s
+     JOIN (
+       SELECT qrData, MAX(id) AS max_id, COUNT(*) AS total
+       FROM scans GROUP BY qrData
+     ) c ON c.max_id = s.id
+     ORDER BY s.id DESC`
+  );
+  return rows.map((r) => ({
+    qrData: r.qrData,
+    lastDirection: r.direction,
+    lastScannedAt: r.scannedAt,
+    total: r.total,
+    inside: r.direction === 'entrada',
+  }));
+}
+
 export async function countScans(): Promise<{ total: number; pendientes: number }> {
   const db = await getDb();
   const row = await db.getFirstAsync<{ total: number; pendientes: number }>(

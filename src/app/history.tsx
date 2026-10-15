@@ -2,7 +2,15 @@ import { useCallback, useState } from 'react';
 import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { clearScans, getPendingScans, getScans, markError, markSynced } from '@/db/scans';
+import {
+  clearScans,
+  getPendingScans,
+  getPersonStates,
+  getScans,
+  markError,
+  markSynced,
+  type PersonState,
+} from '@/db/scans';
 import { sendScan } from '@/lib/api';
 import type { ScanRecord } from '@/lib/types';
 import { loadConfig } from '@/store/config';
@@ -20,10 +28,13 @@ function formatTime(iso: string): string {
 
 export default function HistoryScreen() {
   const [scans, setScans] = useState<ScanRecord[]>([]);
+  const [people, setPeople] = useState<PersonState[]>([]);
+  const [showPeople, setShowPeople] = useState(false);
   const [syncing, setSyncing] = useState(false);
 
   const refresh = useCallback(async () => {
     setScans(await getScans());
+    setPeople(await getPersonStates());
   }, []);
 
   useFocusEffect(
@@ -64,6 +75,8 @@ export default function HistoryScreen() {
   };
 
   const pendientes = scans.filter((s) => s.status !== 'sincronizado').length;
+  const dentro = people.filter((p) => p.lastDirection === 'entrada').length;
+  const fuera = people.length - dentro;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -83,6 +96,38 @@ export default function HistoryScreen() {
           </Pressable>
         </View>
       </View>
+
+      {/* Estado por persona */}
+      <Pressable style={styles.peopleToggle} onPress={() => setShowPeople((v) => !v)}>
+        <Text style={styles.peopleToggleText}>
+          {showPeople ? '▾' : '▸'} Personas ({people.length}) · Dentro: {dentro} · Fuera:{' '}
+          {fuera}
+        </Text>
+      </Pressable>
+      {showPeople &&
+        (people.length === 0 ? (
+          <Text style={styles.emptySmall}>Aún no hay personas registradas.</Text>
+        ) : (
+          people.map((p) => (
+            <View key={p.qrData} style={styles.personRow}>
+              <View
+                style={[
+                  styles.badgeSm,
+                  p.inside ? styles.badgeIn : styles.badgeOut,
+                ]}>
+                <Text style={styles.badgeText}>{p.inside ? 'IN' : 'FUERA'}</Text>
+              </View>
+              <View style={styles.info}>
+                <Text style={styles.qr} numberOfLines={1}>
+                  {p.qrData}
+                </Text>
+                <Text style={styles.meta}>
+                  Último: {p.lastDirection} · {formatTime(p.lastScannedAt)} · {p.total} escaneos
+                </Text>
+              </View>
+            </View>
+          ))
+        ))}
 
       <FlatList
         data={scans}
@@ -179,9 +224,33 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  badgeSm: {
+    minWidth: 44,
+    height: 32,
+    borderRadius: 8,
+    paddingHorizontal: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   badgeIn: { backgroundColor: '#10b981' },
   badgeOut: { backgroundColor: '#f59e0b' },
   badgeText: { color: '#fff', fontWeight: '900', fontSize: 12 },
+  peopleToggle: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    backgroundColor: '#15171a',
+  },
+  peopleToggleText: { color: '#dfe9f5', fontWeight: '700', fontSize: 14 },
+  personRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#2a2a2a',
+  },
+  emptySmall: { color: '#8a8f98', paddingHorizontal: 16, paddingVertical: 10 },
   info: { flex: 1, gap: 2 },
   qr: { color: '#fff', fontSize: 15, fontWeight: '600' },
   meta: { color: '#8a8f98', fontSize: 12 },

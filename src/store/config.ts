@@ -12,17 +12,28 @@ export const DEFAULT_CONFIG: AppConfig = {
     { id: 2, nombre: 'Filtro 2' },
     { id: 3, nombre: 'Filtro 3' },
   ],
-  // Por defecto: el primer escaneo es ENTRADA
-  proximaEsEntrada: true,
-  autoAlternar: false,
+  // Por defecto: el PRIMER escaneo de cada persona es SALIDA
+  // (sale de la nave, p. ej. al baño; su siguiente escaneo será ENTRADA,
+  // y así se alterna automáticamente por persona).
+  primeraDireccion: 'salida',
 };
+
+/** Claves obsoletas que ya no forman parte de la config (regla global antigua). */
+const LEGACY_KEYS = ['proximaEsEntrada', 'autoAlternar'] as const;
 
 export async function loadConfig(): Promise<AppConfig> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
     if (!raw) return DEFAULT_CONFIG;
-    const parsed = JSON.parse(raw) as Partial<AppConfig>;
+    const parsed = JSON.parse(raw) as Partial<AppConfig> &
+      Record<string, unknown>;
+    // Migración: descartar opciones globales antiguas (ahora la dirección
+    // se calcula POR PERSONA, no de forma global).
+    for (const k of LEGACY_KEYS) delete parsed[k];
     const config: AppConfig = { ...DEFAULT_CONFIG, ...parsed };
+    if (config.primeraDireccion !== 'entrada' && config.primeraDireccion !== 'salida') {
+      config.primeraDireccion = DEFAULT_CONFIG.primeraDireccion;
+    }
     if (config.filtros.length === 0) config.filtros = DEFAULT_CONFIG.filtros;
     if (!config.filtros.some((f) => f.id === config.filtroActivo)) {
       config.filtroActivo = config.filtros[0].id;
