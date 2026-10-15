@@ -3,10 +3,10 @@ import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'rea
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-  clearScans,
+  clearAllScans,
   getPendingScans,
   getPersonStates,
-  getScans,
+  getAllScans,
   markError,
   markSynced,
   type PersonState,
@@ -33,7 +33,7 @@ export default function HistoryScreen() {
   const [syncing, setSyncing] = useState(false);
 
   const refresh = useCallback(async () => {
-    setScans(await getScans());
+    setScans(await getAllScans());
     setPeople(await getPersonStates());
   }, []);
 
@@ -70,7 +70,7 @@ export default function HistoryScreen() {
   };
 
   const wipe = async () => {
-    await clearScans();
+    await clearAllScans();
     await refresh();
   };
 
@@ -113,9 +113,9 @@ export default function HistoryScreen() {
               <View
                 style={[
                   styles.badgeSm,
-                  p.inside ? styles.badgeIn : styles.badgeOut,
+                  p.lastDirection === 'entrada' ? styles.badgeIn : styles.badgeOut,
                 ]}>
-                <Text style={styles.badgeText}>{p.inside ? 'IN' : 'FUERA'}</Text>
+                <Text style={styles.badgeText}>{p.lastDirection === 'entrada' ? 'DENTRO' : 'FUERA'}</Text>
               </View>
               <View style={styles.info}>
                 <Text style={styles.qr} numberOfLines={1}>

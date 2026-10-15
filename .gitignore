@@ -1,2 +1,13 @@
 .expo/
 node_modules/
+
+# Filtro Garate: el endpoint configurado en Ajustes puede contener credenciales (token por dispositivo)
+src/store/config.json
+.env
+.env.*
+*.orig.*
+web-build/
+ios/
+android/
+bundle:
+filtro-garate-main.bundle

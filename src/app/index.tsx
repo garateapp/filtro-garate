@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import * as Haptics from 'expo-haptics';
 import { useFocusEffect } from 'expo-router';
+
+import { notifyFeedback } from '@/components/haptics.native';
 
 import {
   getLastDirectionForQr,
@@ -161,11 +162,7 @@ export default function ScanScreen() {
 
     setFeedback({ qr: data, direction, online, nuevo: last === null });
     void refreshStats();
-    void Haptics.notificationAsync(
-      direction === 'entrada'
-        ? Haptics.NotificationFeedbackType.Success
-        : Haptics.NotificationFeedbackType.Warning
-    ).catch(() => {});
+    notifyFeedback(direction);
   };
 
   if (!permission) {
