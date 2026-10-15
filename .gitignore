@@ -9,3 +9,5 @@ src/store/config.json
 web-build/
 ios/
 android/
+bundle:
+filtro-garate-main.bundle
