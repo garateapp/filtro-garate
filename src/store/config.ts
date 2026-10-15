@@ -37,6 +37,22 @@ export async function saveConfig(config: AppConfig): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(config));
 }
 
+let listeners: ((c: AppConfig) => void)[] = [];
+
+/** Suscribe a las pantallas a los cambios de configuración (p. ej. Ajustes → Escáner). */
+export function subscribeConfig(fn: (c: AppConfig) => void): () => void {
+  listeners.push(fn);
+  return () => {
+    listeners = listeners.filter((l) => l !== fn);
+  };
+}
+
+/** Guarda y notifica a todas las pantallas abiertas. */
+export async function updateConfig(config: AppConfig): Promise<void> {
+  await saveConfig(config);
+  for (const fn of listeners) fn(config);
+}
+
 /** Crea un nuevo filtro con el siguiente id disponible. */
 export function makeFilter(filtros: FilterConfig[], nombre?: string): FilterConfig {
   const nextId = filtros.reduce((max, f) => Math.max(max, f.id), 0) + 1;

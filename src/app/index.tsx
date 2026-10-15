@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as Haptics from 'expo-haptics';
+import { useFocusEffect } from 'expo-router';
 
 import { getPendingScans, insertScan, markError, markSynced } from '@/db/scans';
 import { sendScan } from '@/lib/api';
 import type { AppConfig, Direction } from '@/lib/types';
-import { loadConfig, saveConfig } from '@/store/config';
+import { loadConfig, subscribeConfig, updateConfig } from '@/store/config';
 
 export default function ScanScreen() {
   const [permission, requestPermission] = useCameraPermissions();
@@ -27,12 +28,35 @@ export default function ScanScreen() {
 
   // Cargar configuración guardada (filtro activo, dirección por defecto…)
   useEffect(() => {
-    loadConfig().then((c) => setConfig(c));
+    let cancelled = false;
+    loadConfig().then((c) => {
+      if (!cancelled) setConfig(c);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
+  // Refrescar cuando Ajustes guarda un cambio…
+  useEffect(() => subscribeConfig(setConfig), []);
+
+  // …y recargar también al volver a esta pestaña (garantiza lo último de AsyncStorage)
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      loadConfig().then((c) => {
+        if (!cancelled) setConfig(c);
+      });
+      return () => {
+        cancelled = true;
+      };
+    }, [])
+  );
+
   // Reintentar envíos pendientes cuando se abre la app / cambia el endpoint
+  const apiUrl = config?.apiUrl;
   useEffect(() => {
-    if (!config || !config.apiUrl) return;
+    if (!apiUrl) return;
     let cancelled = false;
     (async () => {
       try {
@@ -40,7 +64,7 @@ export default function ScanScreen() {
         for (const scan of pendings) {
           if (cancelled) return;
           try {
-            await sendScan(config.apiUrl, {
+            await sendScan(apiUrl, {
               qr: scan.qrData,
               tipo: scan.direction,
               filtro: scan.filterId,
@@ -60,7 +84,7 @@ export default function ScanScreen() {
     return () => {
       cancelled = true;
     };
-  }, [config?.apiUrl]);
+  }, [apiUrl]);
 
   const handleBarcode = async (data: string) => {
     const cfg = configRef.current;
@@ -100,13 +124,12 @@ export default function ScanScreen() {
       setSending(false);
     }
 
-    // 3. Actualizar dirección para el próximo escaneo
-    const next: AppConfig = {
-      ...cfg,
-      proximaEsEntrada: cfg.autoAlternar ? !cfg.proximaEsEntrada : cfg.proximaEsEntrada,
-    };
-    setConfig(next);
-    void saveConfig(next);
+    // 3. Actualizar dirección para el próximo escaneo (solo si alterna automáticamente)
+    if (cfg.autoAlternar) {
+      const next: AppConfig = { ...cfg, proximaEsEntrada: !cfg.proximaEsEntrada };
+      setConfig(next);
+      void updateConfig(next);
+    }
 
     setFeedback({ qr: data, direction, online });
     void Haptics.notificationAsync(

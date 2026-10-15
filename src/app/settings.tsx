@@ -12,15 +12,22 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import type { AppConfig, FilterConfig } from '@/lib/types';
-import { loadConfig, makeFilter, saveConfig } from '@/store/config';
+import { loadConfig, makeFilter, updateConfig } from '@/store/config';
 
 export default function SettingsScreen() {
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [saved, setSaved] = useState(false);
   const [newFilterName, setNewFilterName] = useState('');
 
+  // Recargar SIEMPRE al abrir la pestaña (puede haber cambios desde el escáner)
   useEffect(() => {
-    loadConfig().then((c) => setConfig(c));
+    let cancelled = false;
+    loadConfig().then((c) => {
+      if (!cancelled) setConfig(c);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   if (!config) {
@@ -28,10 +35,12 @@ export default function SettingsScreen() {
   }
 
   const update = async (patch: Partial<AppConfig>) => {
-    const next = { ...config, ...patch };
+    // Partimos de la config recargada de AsyncStorage para no pisar cambios externos
+    const base = await loadConfig();
+    const next = { ...base, ...patch };
     setConfig(next);
     setSaved(false);
-    await saveConfig(next);
+    await updateConfig(next); // guarda + notifica al escáner
     setSaved(true);
   };
 
